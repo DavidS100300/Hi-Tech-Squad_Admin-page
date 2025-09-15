@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hi-TechSquad Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .sidebar {
+            background: #c8102e
+        }
+
+        .brand {
+            background: #0a0e2a
+        }
+
+        .chip {
+            font-variant-numeric: tabular-nums
+        }
+
+        .menu a {
+            display: flex;
+            justify-content: space-between;
+            padding: .6rem .8rem;
+            border-radius: .5rem;
+            color: #fff
+        }
+
+        .menu a.active,
+        .menu a:hover {
+            background: rgba(255, 255, 255, .15)
+        }
+
+        .btn {
+            background: #0b73b8;
+            color: #fff;
+            padding: .5rem .8rem;
+            border-radius: .5rem
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse
+        }
+
+        th,
+        td {
+            padding: .75rem;
+            border-bottom: 1px solid #eee;
+            font-size: .95rem
+        }
+
+        .overlay {
+            background: rgba(0, 0, 0, .4)
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100">
+
+    <!-- AUTH SCREEN -->
+    <section id="loginScreen" class="min-h-screen flex">
+        <div class="sidebar w-[360px] text-white p-10 flex flex-col justify-between">
+            <div>
+                <h1 class="text-5xl font-extrabold mb-10">Login</h1>
+                <label class="block text-sm mb-1">Email</label>
+                <input id="loginEmail" class="w-full mb-4 p-3 rounded text-black" placeholder="admin@hitech.local" />
+                <label class="block text-sm mb-1">Password</label>
+                <input id="loginPassword" type="password" class="w-full mb-6 p-3 rounded text-black"
+                    placeholder="••••••••" />
+                <button id="loginBtn" class="btn w-full">Login</button>
+                <p id="loginErr" class="text-pink-200 text-sm mt-3"></p>
+            </div>
+            <div class="text-sm opacity-90">
+                <div class="font-semibold">Hi – TechSquad</div>
+                <div>Interview Application</div>
+            </div>
+        </div>
+        <div class="flex-1 grid place-items-center">
+            <div class="text-center">
+                <h2 class="text-5xl font-extrabold">Welcome Back<br />ADMIN!</h2>
+                <img src="./logo.png" alt="Logo" class="h-40 w-auto mx-auto mt-10" />
+            </div>
+        </div>
+    </section>
+
+    <!-- APP SCREEN -->
+    <section id="appScreen" class="hidden min-h-screen flex">
+        <!-- left -->
+        <aside class="sidebar w-[260px] text-white p-6 flex flex-col items-center">
+            <img src="./logo.png" alt="Logo" class="h-16 mb-4" />
+            <h2 class="text-xl font-bold mb-6">Administrator</h2>
+            <nav class="menu space-y-2">
+                <a href="#dashboard" data-view="dashboard" class="active">Dashboard <span>›</span></a>
+
+                <div>
+                    <div class="opacity-80 mb-1">Users</div>
+                    <a href="#users" data-view="users">View Users <span>›</span></a>
+                    <a href="#" id="openAddInterviewer">Add User <span>›</span></a>
+                </div>
+
+                <div>
+                    <div class="opacity-80 mb-1">Questions Set</div>
+                    <a href="#qsets" data-view="qsets">View / Edit <span>›</span></a>
+                    <a href="#add-admin" data-view="admins">Add Admin <span>›</span></a>
+                </div>
+            </nav>
+            <div class="mt-10 border-t border-white/20 pt-4">
+                <div id="meBox" class="text-sm">
+                    <div class="font-semibold" id="meName">—</div>
+                    <div id="meEmail">—</div>
+                    <div class="mt-3"><button id="logoutBtn" class="btn">Log out</button></div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- right -->
+        <main class="flex-1 p-8">
+            <div class="flex items-center justify-between">
+                <h1 class="text-2xl font-bold">Hello <span id="helloName">Administrator</span> 👋</h1>
+                <img src="./logo.png" alt="Logo" class="h-20 w-auto rounded-xl" />
+            </div>
+
+
+            <!-- stats -->
+            <div class="grid md:grid-cols-3 gap-6 mt-6">
+                <div class="bg-white rounded-xl p-6 shadow">
+                    <div class="text-sm opacity-70">Total Recording</div>
+                    <div id="statRecordings" class="text-3xl chip font-bold">0</div>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow">
+                    <div class="text-sm opacity-70">Total Users</div>
+                    <div id="statUsers" class="text-3xl chip font-bold">0</div>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow">
+                    <div class="text-sm opacity-70">Total Admins</div>
+                    <div id="statAdmins" class="text-3xl chip font-bold">0</div>
+                </div>
+            </div>
+
+            <!-- Dashboard: recordings -->
+            <div id="viewDashboard" class="mt-8">
+                <div class="bg-white rounded-xl p-6 shadow">
+                    <div class="flex gap-3 items-center">
+                        <input id="searchInput" class="border rounded p-2 flex-1"
+                            placeholder="Search email / username / question set / file" />
+                        <select id="sortSelect" class="border rounded p-2">
+                            <option value="new">Newest</option>
+                            <option value="old">Oldest</option>
+                        </select>
+                    </div>
+                    <div class="overflow-x-auto mt-4">
+                        <table>
+                            <thead>
+                                <tr class="text-left">
+                                    <th>Username (Email)</th>
+                                    <th>Recording Time</th>
+                                    <th>Question Set</th>
+                                    <th>Interviewee</th>
+                                    <th>File</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="flex items-center gap-2 mt-4">
+                        <button id="prevPage" class="px-3 py-1 border rounded">‹</button>
+                        <span id="pageInfo"></span>
+                        <button id="nextPage" class="px-3 py-1 border rounded">›</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users -->
+            <div id="viewUsers" class="mt-8 hidden">
+                <div class="bg-white rounded-xl p-6 shadow">
+                    <div class="flex items-center gap-3 mb-4">
+                        <input id="usersSearch" class="border rounded p-2 flex-1"
+                            placeholder="Search username / email" />
+                        <button id="usersRefresh" class="px-3 py-2 border rounded">Refresh</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table>
+                            <thead>
+                                <tr class="text-left">
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Phone</th>
+                                    <th>Created</th>
+                                    <th>Uploads</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="text-sm opacity-70 mt-3" id="usersCount"></div>
+                </div>
+            </div>
+
+            <!-- Question Sets -->
+            <div id="viewQsets" class="mt-8 hidden">
+                <div class="bg-white rounded-xl p-6 shadow space-y-6">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-semibold">Question Sets</h3>
+                        <button id="newQBtn" class="btn">+ New set</button>
+                    </div>
+
+                    <div id="qsetsList" class="grid md:grid-cols-2 gap-4"></div>
+
+                    <div class="border rounded-xl p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <h4 class="font-semibold" id="qEditTitle">Create / Edit</h4>
+                        </div>
+
+                        <input id="qTitle" class="border rounded p-2 w-full mb-2"
+                            placeholder="Title (e.g., Question Set 5)" />
+                        <textarea id="qDesc" class="border rounded p-2 w-full mb-2"
+                            placeholder="Description (optional)"></textarea>
+
+                        <div id="qList" class="space-y-2"></div>
+
+                        <div class="mt-2">
+                            <button id="addQItem" class="px-3 py-1 border rounded">+ Question</button>
+                        </div>
+
+                        <div class="mt-3 flex gap-2">
+                            <button id="saveQBtn" class="btn">Save</button>
+                            <button id="deleteQBtn" class="px-3 py-2 border rounded">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add Admin -->
+            <div id="viewAdmins" class="mt-8 hidden">
+                <div class="bg-white rounded-xl p-6 shadow">
+                    <h3 class="font-semibold mb-4">Add Admin</h3>
+                    <div class="grid md:grid-cols-3 gap-3">
+                        <input id="aName" class="border rounded p-2" placeholder="Name" />
+                        <input id="aEmail" class="border rounded p-2" placeholder="Email" />
+                        <input id="aPass" type="password" class="border rounded p-2" placeholder="Password" />
+                    </div>
+                    <div class="mt-3">
+                        <select id="aRole" class="border rounded p-2">
+                            <option value="admin">admin</option>
+                            <option value="super">super</option>
+                        </select>
+                        <button id="addAdminBtn" class="btn ml-2">Create</button>
+                    </div>
+                    <p id="addAdminMsg" class="text-sm mt-3"></p>
+                </div>
+            </div>
+        </main>
+    </section>
+
+    <!-- Add User Modal -->
+    <div id="addInterviewerModal" class="fixed inset-0 hidden items-center justify-center overlay">
+        <div class="bg-white max-w-md w-[95%] rounded-xl shadow-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold">Add User</h3>
+                <button id="closeAddInterviewer" class="px-3 py-1 border rounded">Close</button>
+            </div>
+            <div class="space-y-3">
+                <input id="addUUsername" class="border rounded p-2 w-full" placeholder="Username" />
+                <input id="addUEmail" class="border rounded p-2 w-full" placeholder="Email" />
+                <input id="addUPassword" type="password" class="border rounded p-2 w-full" placeholder="Password" />
+                <input id="addUPhone" class="border rounded p-2 w-full" placeholder="Phone (optional)" />
+                <p id="addIError" class="text-sm text-red-600"></p>
+                <div class="flex justify-end gap-2">
+                    <button id="createInterviewerBtn" class="btn">Create</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- USER DETAIL MODAL -->
+    <div id="userModal" class="fixed inset-0 hidden items-center justify-center overlay">
+        <div class="bg-white max-w-4xl w-[95%] rounded-xl shadow-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold">User Detail</h3>
+                <button id="closeUserModal" class="px-3 py-1 border rounded">Close</button>
+            </div>
+            <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                    <h4 class="font-semibold mb-2">Profile</h4>
+                    <pre id="userJson" class="bg-gray-50 p-3 rounded text-sm overflow-auto max-h-64"></pre>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-2">Recordings</h4>
+                    <div class="overflow-x-auto">
+                        <table>
+                            <thead>
+                                <tr class="text-left">
+                                    <th>Time</th>
+                                    <th>File</th>
+                                    <th>QSet</th>
+                                    <th>Created By</th>
+                                </tr>
+                            </thead>
+                            <tbody id="userRecs"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RECORDING DETAIL MODAL -->
+    <div id="recModal" class="fixed inset-0 hidden items-center justify-center overlay">
+        <div class="bg-white max-w-3xl w-[95%] rounded-xl shadow-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold">Recording Detail</h3>
+                <button id="closeRecModal" class="px-3 py-1 border rounded">Close</button>
+            </div>
+            <div id="recContent" class="space-y-4 text-sm max-h-[70vh] overflow-auto"></div>
+        </div>
+    </div>
+
+    <script src="./app.js"></script>
+</body>
+
+</html>
