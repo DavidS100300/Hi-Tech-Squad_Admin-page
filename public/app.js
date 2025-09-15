@@ -166,6 +166,49 @@ async function loadDashboard() {
   });
 }
 
+// ======= QUESTION SETS =======
+async function loadQsets() {
+  try {
+    // ask grouped=true so backend returns sets with questions
+    const res = await apiGet("/api/qsets?grouped=true");
+    const data = res.data || [];
+
+    const list = document.getElementById("qsetsList");
+    list.innerHTML = "";
+
+    if (!data.length) {
+      list.innerHTML = `<p class="text-gray-500">No question sets found</p>`;
+      return;
+    }
+
+    data.forEach((set) => {
+      const div = document.createElement("div");
+      div.className = "bg-white rounded-xl p-4 shadow";
+
+      div.innerHTML = `
+        <h4 class="font-semibold mb-2">${escapeHtml(set.setName)}</h4>
+        <p class="text-xs text-gray-500 mb-2">Questions: ${set.count}</p>
+        <ul class="list-disc pl-5 space-y-1">
+          ${set.questions.map(q => `<li>${escapeHtml(q)}</li>`).join("")}
+        </ul>
+      `;
+
+      list.appendChild(div);
+    });
+  } catch (err) {
+    console.error("Failed to load question sets:", err);
+    const list = document.getElementById("qsetsList");
+    list.innerHTML = `<p class="text-red-600">Error loading question sets</p>`;
+  }
+}
+
+// Hook into nav click
+document.querySelector('[data-view="qsets"]').addEventListener("click", () => {
+  viewQsets.classList.remove("hidden");
+  loadQsets();
+});
+
+
 /* ======= USERS ======= */
 usersSearch.addEventListener("input", () => { usersState.query = usersSearch.value.trim(); renderUsers(); });
 usersRefresh.addEventListener("click", loadUsers);

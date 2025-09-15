@@ -57,7 +57,6 @@ const Admin = mongoose.model(
     )
 );
 
-// Supports username/passwordHash (login capable), email unique.
 const User = mongoose.model(
     "User",
     new mongoose.Schema(
@@ -66,7 +65,6 @@ const User = mongoose.model(
             email: { type: String, unique: true, index: true },
             passwordHash: String,
             phone: String,
-            // legacy/optional
             name: String,
             title: String,
             department: String,
@@ -86,9 +84,8 @@ const Recording = mongoose.model(
             s3_key: String,
             uploaded_at: Date,
             interviewer: String,
-            interviewee_name: String,   // ✅ add this
+            interviewee_name: String,
             question_set: String,
-
             transcript: String,
             summary: String,
             key_points: [String],
@@ -100,7 +97,6 @@ const Recording = mongoose.model(
         { collection: "submitted" }
     )
 );
-
 
 const InterviewQuestion = mongoose.model(
     "Interview_Question",
@@ -137,8 +133,6 @@ function auth(req, res, next) {
         return res.status(401).json({ error: "Invalid token" });
     }
 }
-
-/** Get a temporary playable URL for an S3 object (10 mins). */
 async function presignIfPossible(rec) {
     if (!S3_BUCKET) return null;
     const key = rec.s3_key || rec.file_name;
@@ -151,8 +145,6 @@ async function presignIfPossible(rec) {
         );
     });
 }
-
-/** Normalize question-set display (optional). */
 function deriveSetNumber(setName) {
     const s = String(setName || "");
     const m = s.match(/(\d+(?:\.\d+)*)\s*$/);
@@ -160,8 +152,6 @@ function deriveSetNumber(setName) {
     const any = s.replace(/\D+/g, "");
     return any || s;
 }
-
-/** ✱ NEW: Shape a recording for UI without exposing s3_url by default. */
 function shapeRecording(rec, { includeAudioUrl = false } = {}) {
     const shaped = {
         _id: rec._id,
@@ -190,10 +180,8 @@ async function seedEnvAdminIfMissing() {
     const envPass = process.env.ENV_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD;
     const envHash = process.env.ENV_ADMIN_HASH;
     if (!envEmail || (!envPass && !envHash)) return;
-
     const existing = await Admin.findOne({ email: envEmail }).lean();
     if (existing) return;
-
     const passwordHash = envHash ? envHash : await bcrypt.hash(envPass, 10);
     await Admin.create({
         name: "Environment Admin",
@@ -207,15 +195,13 @@ seedEnvAdminIfMissing().catch((err) => console.warn("[seed] failed:", err.messag
 
 // ---------- Routes ----------
 
-// Login
+// Auth (Admin)
 app.post("/api/admin/login", async (req, res) => {
     try {
         const { email, password } = req.body || {};
-        if (!email || !password)
-            return res.status(400).json({ error: "Email and password required" });
+        if (!email || !password) return res.status(400).json({ error: "Email and password required" });
         const a = await Admin.findOne({ email }).lean();
-        if (!a || !a.passwordHash)
-            return res.status(401).json({ error: "Invalid email or password" });
+        if (!a || !a.passwordHash) return res.status(401).json({ error: "Invalid email or password" });
         const ok = await bcrypt.compare(password, a.passwordHash);
         if (!ok) return res.status(401).json({ error: "Invalid email or password" });
         return res.json({ token: issueToken(a) });
@@ -223,18 +209,15 @@ app.post("/api/admin/login", async (req, res) => {
         res.status(500).json({ error: err.message || "Login failed" });
     }
 });
-
 app.get("/api/admin/me", auth, async (req, res) => {
     const a = await Admin.findById(req.admin.id).lean();
     if (!a) return res.status(404).json({ error: "Not found" });
     res.json(safeAdmin(a));
 });
-
 app.post("/api/admin/create", auth, async (req, res) => {
     try {
         const { name, email, password, role = "admin" } = req.body || {};
-        if (!email || !password)
-            return res.status(400).json({ error: "Email & password required" });
+        if (!email || !password) return res.status(400).json({ error: "Email & password required" });
         const passwordHash = await bcrypt.hash(password, 10);
         const admin = await Admin.create({ name, email, passwordHash, role });
         res.json(safeAdmin(admin));
@@ -255,26 +238,19 @@ app.get("/api/admin/stats", auth, async (req, res) => {
             totalRecordings,
             totalAdmins,
             totalUsers,
-            totalInterviewers: totalAdmins, // backward compat with old UI labels
+            totalInterviewers: totalAdmins,
         });
     } catch (err) {
         res.status(500).json({ error: err.message || "Failed to load stats" });
     }
 });
 
-// ---------------- Users (CRUD for admin) ----------------
+// Users
 app.get("/api/admin/users", auth, async (req, res) => {
     try {
         const q = (req.query.q || "").trim();
         const filter = q
-            ? {
-                $or: [
-                    { email: new RegExp(q, "i") },
-                    { username: new RegExp(q, "i") },
-                    { phone: new RegExp(q, "i") },
-                    { name: new RegExp(q, "i") },
-                ],
-            }
+            ? { $or: [{ email: new RegExp(q, "i") }, { username: new RegExp(q, "i") }, { phone: new RegExp(q, "i") }, { name: new RegExp(q, "i") }] }
             : {};
         const users = await User.find(filter).sort({ createdAt: -1 }).lean();
         res.json({ users });
@@ -282,45 +258,24 @@ app.get("/api/admin/users", auth, async (req, res) => {
         res.status(500).json({ error: err.message || "Failed to load users" });
     }
 });
-
 app.get("/api/admin/users/:id", auth, async (req, res) => {
     const u = await User.findById(req.params.id).lean();
     if (!u) return res.status(404).json({ error: "Not found" });
     res.json(u);
 });
-
-/**
- * ✱ CHANGED: Returns user's recordings WITHOUT s3_url to avoid downloads.
- * Frontend should open one item to get full details (below).
- */
 app.get("/api/admin/users/:id/recordings", auth, async (req, res) => {
     const u = await User.findById(req.params.id).lean();
     if (!u) return res.status(404).json({ error: "User not found" });
-    const items = await Recording.find({ email: u.email })
-        .sort({ uploaded_at: -1 })
-        .lean();
-    res.json({
-        items: items.map((r) => shapeRecording(r, { includeAudioUrl: false })),
-    });
+    const items = await Recording.find({ email: u.email }).sort({ uploaded_at: -1 }).lean();
+    res.json({ items: items.map((r) => shapeRecording(r, { includeAudioUrl: false })) });
 });
-
-// Create user
 app.post("/api/admin/users", auth, async (req, res) => {
     try {
         const { username, email, password, phone = "" } = req.body || {};
-        if (!username || !email || !password) {
-            return res
-                .status(400)
-                .json({ error: "username, email and password are required" });
-        }
-
-        const exists = await User.findOne({
-            $or: [{ email: email.toLowerCase() }, { username }],
-        }).lean();
+        if (!username || !email || !password) return res.status(400).json({ error: "username, email and password are required" });
+        const exists = await User.findOne({ $or: [{ email: email.toLowerCase() }, { username }] }).lean();
         if (exists) return res.status(409).json({ error: "Username or email already exists" });
-
         const passwordHash = await bcrypt.hash(password, 10);
-
         const created = await User.create({
             username: String(username).trim(),
             email: String(email).trim().toLowerCase(),
@@ -328,110 +283,36 @@ app.post("/api/admin/users", auth, async (req, res) => {
             phone: String(phone || "").trim(),
             role: "user",
         });
-
-        res.status(201).json({
-            _id: created._id,
-            username: created.username,
-            email: created.email,
-            phone: created.phone,
-            createdAt: created.createdAt,
-            updatedAt: created.updatedAt,
-        });
+        res.status(201).json({ _id: created._id, username: created.username, email: created.email, phone: created.phone, createdAt: created.createdAt, updatedAt: created.updatedAt });
     } catch (err) {
         res.status(500).json({ error: err.message || "Failed to create user" });
     }
 });
 
-// Optional alias
-app.post("/api/users", auth, async (req, res) => {
-    return app._router.handle(
-        { ...req, url: "/api/admin/users", method: "POST" },
-        res,
-        () => { }
-    );
-});
-
-// ---------------- Recordings ----------------
-
-/**
- * Paged list of recordings. Does NOT expose s3_url by default.
- * Pass ?includeAudio=true to include (not recommended for lists).
- */
-// Get paginated recordings
+// Recordings
 app.get("/api/admin/recordings", async (req, res) => {
     try {
         const page = parseInt(req.query.page || "1");
         const limit = parseInt(req.query.limit || "20");
-
         const skip = (page - 1) * limit;
-
         const total = await Recording.countDocuments();
-        let items = await Recording.find()
-            .sort({ uploaded_at: -1 })
-            .skip(skip)
-            .limit(limit)
-            .lean();
-
-        // ✅ Clean up interviewee_name
-        items = items.map(r => {
-            if (r.interviewee_name) {
-                r.interviewee_name = r.interviewee_name.replace(/"/g, "");
-            }
+        let items = await Recording.find().sort({ uploaded_at: -1 }).skip(skip).limit(limit).lean();
+        items = items.map((r) => {
+            if (r.interviewee_name) r.interviewee_name = r.interviewee_name.replace(/"/g, "");
             return r;
         });
-
         res.json({ total, items });
     } catch (err) {
         console.error("Error fetching recordings:", err);
         res.status(500).json({ error: "Failed to fetch recordings" });
     }
 });
-
-
-/**
- * ✱ CHANGED: Single recording “details” endpoint.
- * Default: no s3_url. Add ?includeAudio=true to include existing s3_url or presigned fallback.
- */
 app.get("/api/admin/recordings/:id", auth, async (req, res) => {
     try {
         const includeAudio = String(req.query.includeAudio || "").toLowerCase() === "true";
         const rec = await Recording.findById(req.params.id).lean();
         if (!rec) return res.status(404).json({ error: "Not found" });
-
         let shaped = shapeRecording(rec, { includeAudioUrl: false });
-
-        if (includeAudio) {
-            // Prefer stored s3_url; otherwise presign if possible
-            if (!rec.s3_url && S3_BUCKET) {
-                try {
-                    const url = await presignIfPossible(rec);
-                    if (url) rec.s3_url = url;
-                } catch {
-                    // ignore presign errors
-                }
-            }
-            if (rec.s3_url) shaped.s3_url = rec.s3_url;
-        }
-
-        res.json(shaped);
-    } catch (err) {
-        res.status(500).json({ error: err.message || "Failed to load recording" });
-    }
-});
-
-/**
- * ✱ NEW: Lookup by file_name for convenience from UI tables.
- * GET /api/admin/recordings/by-file/:fileName
- * Optional ?includeAudio=true
- */
-app.get("/api/admin/recordings/by-file/:fileName", auth, async (req, res) => {
-    try {
-        const includeAudio = String(req.query.includeAudio || "").toLowerCase() === "true";
-        const rec = await Recording.findOne({ file_name: req.params.fileName }).lean();
-        if (!rec) return res.status(404).json({ error: "Not found" });
-
-        let shaped = shapeRecording(rec, { includeAudioUrl: false });
-
         if (includeAudio) {
             if (!rec.s3_url && S3_BUCKET) {
                 try {
@@ -441,22 +322,35 @@ app.get("/api/admin/recordings/by-file/:fileName", auth, async (req, res) => {
             }
             if (rec.s3_url) shaped.s3_url = rec.s3_url;
         }
-
+        res.json(shaped);
+    } catch (err) {
+        res.status(500).json({ error: err.message || "Failed to load recording" });
+    }
+});
+app.get("/api/admin/recordings/by-file/:fileName", auth, async (req, res) => {
+    try {
+        const includeAudio = String(req.query.includeAudio || "").toLowerCase() === "true";
+        const rec = await Recording.findOne({ file_name: req.params.fileName }).lean();
+        if (!rec) return res.status(404).json({ error: "Not found" });
+        let shaped = shapeRecording(rec, { includeAudioUrl: false });
+        if (includeAudio) {
+            if (!rec.s3_url && S3_BUCKET) {
+                try {
+                    const url = await presignIfPossible(rec);
+                    if (url) rec.s3_url = url;
+                } catch { }
+            }
+            if (rec.s3_url) shaped.s3_url = rec.s3_url;
+        }
         res.json(shaped);
     } catch (err) {
         res.status(500).json({ error: err.message || "Failed to load recording by file_name" });
     }
 });
-
-/**
- * ✱ NEW: Get a short-lived audio URL only when the UI requests it.
- * This keeps your list clicks from downloading the file.
- */
 app.get("/api/admin/recordings/:id/audio", auth, async (req, res) => {
     try {
         const rec = await Recording.findById(req.params.id).lean();
         if (!rec) return res.status(404).json({ error: "Not found" });
-
         let url = rec.s3_url;
         if (!url && S3_BUCKET) {
             try {
@@ -472,7 +366,7 @@ app.get("/api/admin/recordings/:id/audio", auth, async (req, res) => {
     }
 });
 
-// ---------------- Question Sets ----------------
+// ---------- Question Sets ----------
 app.post("/api/qsets", auth, async (req, res) => {
     const { setName, questions } = req.body || {};
     if (!setName || !Array.isArray(questions) || questions.length === 0) {
@@ -488,7 +382,6 @@ app.post("/api/qsets", auth, async (req, res) => {
     await InterviewQuestion.insertMany(docs);
     res.json({ success: true, inserted: docs.length });
 });
-
 app.put("/api/qsets/:setName", auth, async (req, res) => {
     const setName = decodeURIComponent(req.params.setName);
     const { questions } = req.body || {};
@@ -502,18 +395,14 @@ app.put("/api/qsets/:setName", auth, async (req, res) => {
     const r = await InterviewQuestion.insertMany(docs);
     res.json({ success: true, replaced: r.length });
 });
-
 app.delete("/api/qsets/:setName", auth, async (req, res) => {
     const setName = decodeURIComponent(req.params.setName);
     const r = await InterviewQuestion.deleteMany({ setName });
     res.json({ success: true, deleted: r.deletedCount || 0 });
 });
-
 app.get("/api/qsets", auth, async (req, res) => {
     const grouped = req.query.grouped === "true";
-    const all = await InterviewQuestion.find({})
-        .sort({ setName: 1, questionId: 1 })
-        .lean();
+    const all = await InterviewQuestion.find({}).sort({ setName: 1, questionId: 1 }).lean();
     if (!grouped) return res.json({ items: all });
     const map = new Map();
     for (const q of all) {
@@ -529,9 +418,5 @@ app.get("/api/qsets", auth, async (req, res) => {
 });
 
 // ---------- Boot ----------
-app.get("/", (req, res) =>
-    res.sendFile(path.join(__dirname, "public", "index.html"))
-);
-app.listen(PORT, () =>
-    console.log(`Server running at http://localhost:${PORT}`)
-);
+app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
+app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
