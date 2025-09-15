@@ -86,6 +86,7 @@ const Recording = mongoose.model(
             s3_key: String,
             uploaded_at: Date,
             interviewer: String,
+            interviewee_name: String,   // ✅ add this
             question_set: String,
 
             transcript: String,
@@ -99,6 +100,7 @@ const Recording = mongoose.model(
         { collection: "submitted" }
     )
 );
+
 
 const InterviewQuestion = mongoose.model(
     "Interview_Question",
@@ -355,32 +357,36 @@ app.post("/api/users", auth, async (req, res) => {
  * Paged list of recordings. Does NOT expose s3_url by default.
  * Pass ?includeAudio=true to include (not recommended for lists).
  */
-app.get("/api/admin/recordings", auth, async (req, res) => {
+// Get paginated recordings
+app.get("/api/admin/recordings", async (req, res) => {
     try {
-        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-        const limit = Math.min(50, parseInt(req.query.limit, 10) || 20);
+        const page = parseInt(req.query.page || "1");
+        const limit = parseInt(req.query.limit || "20");
+
         const skip = (page - 1) * limit;
-        const includeAudio = String(req.query.includeAudio || "").toLowerCase() === "true";
 
-        const [items, total] = await Promise.all([
-            Recording.find({})
-                .sort({ uploaded_at: -1 })
-                .skip(skip)
-                .limit(limit)
-                .lean(),
-            Recording.countDocuments(),
-        ]);
+        const total = await Recording.countDocuments();
+        let items = await Recording.find()
+            .sort({ uploaded_at: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean();
 
-        res.json({
-            items: items.map((r) => shapeRecording(r, { includeAudioUrl: includeAudio })),
-            page,
-            total,
-            pages: Math.ceil(total / limit),
+        // ✅ Clean up interviewee_name
+        items = items.map(r => {
+            if (r.interviewee_name) {
+                r.interviewee_name = r.interviewee_name.replace(/"/g, "");
+            }
+            return r;
         });
+
+        res.json({ total, items });
     } catch (err) {
-        res.status(500).json({ error: err.message || "Failed to load recordings" });
+        console.error("Error fetching recordings:", err);
+        res.status(500).json({ error: "Failed to fetch recordings" });
     }
 });
+
 
 /**
  * ✱ CHANGED: Single recording “details” endpoint.
