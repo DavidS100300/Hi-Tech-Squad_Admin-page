@@ -382,6 +382,7 @@ app.post("/api/qsets", auth, async (req, res) => {
     await InterviewQuestion.insertMany(docs);
     res.json({ success: true, inserted: docs.length });
 });
+
 app.put("/api/qsets/:setName", auth, async (req, res) => {
     const setName = decodeURIComponent(req.params.setName);
     const { questions } = req.body || {};
@@ -395,15 +396,18 @@ app.put("/api/qsets/:setName", auth, async (req, res) => {
     const r = await InterviewQuestion.insertMany(docs);
     res.json({ success: true, replaced: r.length });
 });
+
 app.delete("/api/qsets/:setName", auth, async (req, res) => {
     const setName = decodeURIComponent(req.params.setName);
     const r = await InterviewQuestion.deleteMany({ setName });
     res.json({ success: true, deleted: r.deletedCount || 0 });
 });
+
 app.get("/api/qsets", auth, async (req, res) => {
     const grouped = req.query.grouped === "true";
     const all = await InterviewQuestion.find({}).sort({ setName: 1, questionId: 1 }).lean();
     if (!grouped) return res.json({ items: all });
+
     const map = new Map();
     for (const q of all) {
         if (!map.has(q.setName)) map.set(q.setName, []);
@@ -420,3 +424,4 @@ app.get("/api/qsets", auth, async (req, res) => {
 // ---------- Boot ----------
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
+

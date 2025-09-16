@@ -50,6 +50,15 @@ const createInterviewerBtn = $("#createInterviewerBtn");
 const userModal = $("#userModal"), closeUserModal = $("#closeUserModal"), userJson = $("#userJson"), userRecs = $("#userRecs");
 const recModal = $("#recModal"), closeRecModal = $("#closeRecModal"), recContent = $("#recContent");
 
+// Question sets editor DOM
+const qTitle = $("#qTitle");
+const qDesc = $("#qDesc");
+const qList = $("#qList");
+const addQItemBtn = $("#addQItem");
+const saveQBtn = $("#saveQBtn");
+const deleteQBtn = $("#deleteQBtn");
+const newQBtn = $("#newQBtn");
+
 /* ======= STATE ======= */
 let dash = { page: 1, limit: 20, total: 0, query: "", sort: "new", items: [] };
 let usersState = { query: "", list: [] };
@@ -78,7 +87,6 @@ loginBtn.addEventListener("click", async () => {
     meEmail.textContent = AUTH.me.email || "";
     helloName.textContent = AUTH.me.name || "Administrator";
     hide(loginScreen); showFlex(appScreen);
-    await loadStats();
     await loadDashboard();
   } catch (e) {
     console.error(e);
@@ -99,7 +107,7 @@ navLinks.forEach(a => a.addEventListener("click", (e) => {
   [viewDashboard, viewUsers, viewQsets, viewAdmins].forEach(h => h.classList.add("hidden"));
   if (view === "dashboard") { viewDashboard.classList.remove("hidden"); loadDashboard(); }
   if (view === "users") { viewUsers.classList.remove("hidden"); loadUsers(); }
-  if (view === "qsets") { viewQsets.classList.remove("hidden"); }
+  if (view === "qsets") { viewQsets.classList.remove("hidden"); loadQsets(); }
   if (view === "admins") { viewAdmins.classList.remove("hidden"); }
 }));
 
@@ -113,16 +121,18 @@ async function loadStats() {
   } catch (e) { console.warn("stats:", e.message); }
 }
 
-/* ======= DASHBOARD (Recordings list, no downloads) ======= */
+/* ======= DASHBOARD ======= */
 searchInput.addEventListener("input", () => { dash.query = searchInput.value.trim(); dash.page = 1; loadDashboard(); });
 sortSelect.addEventListener("change", () => { dash.sort = sortSelect.value; dash.page = 1; loadDashboard(); });
 prevPageBtn.addEventListener("click", () => { if (dash.page > 1) { dash.page--; loadDashboard(); } });
 nextPageBtn.addEventListener("click", () => { const pages = Math.ceil(dash.total / dash.limit); if (dash.page < pages) { dash.page++; loadDashboard(); } });
+
 if (refreshRecsBtn) {
   refreshRecsBtn.addEventListener("click", () => loadDashboard());
 }
 
 async function loadDashboard() {
+  await loadStats();
   const data = await apiGet(`/api/admin/recordings?page=${dash.page}&limit=${dash.limit}`);
   dash.items = data.items || []; dash.total = data.total || 0;
 
@@ -166,18 +176,19 @@ async function loadDashboard() {
   });
 }
 
-// ======= QUESTION SETS =======
+/* ======= QUESTION SETS ======= */
+let editingQset = null;
+
 async function loadQsets() {
   try {
-    // ask grouped=true so backend returns sets with questions
     const res = await apiGet("/api/qsets?grouped=true");
     const data = res.data || [];
-
     const list = document.getElementById("qsetsList");
     list.innerHTML = "";
 
     if (!data.length) {
       list.innerHTML = `<p class="text-gray-500">No question sets found</p>`;
+      openQsetEditor(null);
       return;
     }
 
@@ -188,41 +199,112 @@ async function loadQsets() {
       div.innerHTML = `
         <h4 class="font-semibold mb-2">${escapeHtml(set.setName)}</h4>
         <p class="text-xs text-gray-500 mb-2">Questions: ${set.count}</p>
-        <ul class="list-disc pl-5 space-y-1">
+        <ul class="list-disc pl-5 space-y-1 mb-3">
           ${set.questions.map(q => `<li>${escapeHtml(q)}</li>`).join("")}
         </ul>
+        <div class="flex gap-2">
+          <button class="px-3 py-1 border rounded bg-blue-600 text-white" data-edit-name="${encodeURIComponent(set.setName)}">Edit</button>
+          <button class="px-3 py-1 border rounded bg-red-600 text-white" data-del-name="${encodeURIComponent(set.setName)}">Delete</button>
+        </div>
       `;
-
       list.appendChild(div);
     });
+
+    // Edit: load into editor
+    $$("#qsetsList [data-edit-name]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const name = decodeURIComponent(btn.dataset.editName);
+        const set = (res.data || []).find(s => s.setName === name);
+        openQsetEditor(set || null);
+      });
+    });
+
+    // Delete: call backend
+    $$("#qsetsList [data-del-name]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const setName = decodeURIComponent(btn.dataset.delName);
+        if (!confirm(`Delete "${setName}"?`)) return;
+        await apiDelete(`/api/qsets/${encodeURIComponent(setName)}`);
+        if (editingQset && editingQset.setName === setName) editingQset = null;
+        await loadQsets();
+        openQsetEditor(null);
+      });
+    });
+
   } catch (err) {
     console.error("Failed to load question sets:", err);
-    const list = document.getElementById("qsetsList");
-    list.innerHTML = `<p class="text-red-600">Error loading question sets</p>`;
+    document.getElementById("qsetsList").innerHTML = `<p class="text-red-600">Error loading question sets</p>`;
   }
 }
 
-// Hook into nav click
-document.querySelector('[data-view="qsets"]').addEventListener("click", () => {
-  viewQsets.classList.remove("hidden");
-  loadQsets();
+function openQsetEditor(set = null) {
+  editingQset = set;
+  qTitle.value = set ? set.setName : "";
+  qDesc.value = set && set.description ? set.description : "";
+  qList.innerHTML = "";
+
+  const questions = set ? (set.questions || [""]) : [""];
+  questions.forEach(q => addQRow(q));
+}
+
+function addQRow(value = "") {
+  const div = document.createElement("div");
+  div.className = "flex gap-2";
+  div.innerHTML = `
+    <input type="text" class="border rounded p-2 flex-1" value="${escapeHtml(value)}" placeholder="Enter question" />
+    <button type="button" class="px-2 py-1 border rounded bg-red-500 text-white">✕</button>
+  `;
+  div.querySelector("button").addEventListener("click", () => div.remove());
+  qList.appendChild(div);
+}
+addQItemBtn.addEventListener("click", () => addQRow());
+newQBtn.addEventListener("click", () => openQsetEditor(null));
+
+saveQBtn.addEventListener("click", async () => {
+  const newName = qTitle.value.trim();
+  const questions = Array.from(qList.querySelectorAll("input"))
+    .map(i => i.value.trim())
+    .filter(Boolean);
+
+  if (!newName) { alert("Title is required"); return; }
+  if (!questions.length) { alert("Please add at least 1 question"); return; }
+
+  if (!editingQset) {
+    await apiPost("/api/qsets", { setName: newName, questions });
+  } else if (editingQset.setName === newName) {
+    await apiPut(`/api/qsets/${encodeURIComponent(newName)}`, { questions });
+  } else {
+    await apiDelete(`/api/qsets/${encodeURIComponent(editingQset.setName)}`);
+    await apiPost("/api/qsets", { setName: newName, questions });
+  }
+
+  await loadQsets();
+  openQsetEditor(null);
+});
+
+deleteQBtn.addEventListener("click", async () => {
+  if (!editingQset) { alert("No question set selected for deletion."); return; }
+  const setName = editingQset.setName;
+  if (!confirm(`Delete "${setName}"?`)) return;
+
+  await apiDelete(`/api/qsets/${encodeURIComponent(setName)}`);
+  editingQset = null;
+  await loadQsets();
+  openQsetEditor(null);
 });
 
 
 /* ======= USERS ======= */
 usersSearch.addEventListener("input", () => { usersState.query = usersSearch.value.trim(); renderUsers(); });
-usersRefresh.addEventListener("click", loadUsers);
+usersRefresh.addEventListener("click", async () => { await loadStats(); await loadUsers(); });
 
 async function loadUsers() {
   const qParam = usersState.query ? `?q=${encodeURIComponent(usersState.query)}` : "";
   const data = await apiGet(`/api/admin/users${qParam}`);
   usersState.list = data.users || [];
-
-  // Preload counts
   await Promise.all(usersState.list.map(u =>
     fetchUserRecordingCount(u._id).catch(() => { userRecCount[u._id] = 0; })
   ));
-
   renderUsers();
 }
 
@@ -240,11 +322,8 @@ function renderUsers() {
     const created = u.createdAt ? fmtDate(u.createdAt) : "-";
     return `
       <tr>
-        <td>
-          <button class="text-blue-700 underline" data-open-user="${u._id}">
-            ${u.username ? escapeHtml(u.username) : "-"}
-          </button>
-        </td>
+        <td><button class="text-blue-700 underline" data-open-user="${u._id}">
+          ${u.username ? escapeHtml(u.username) : "-"}</button></td>
         <td>${u.email ? escapeHtml(u.email) : "-"}</td>
         <td>${u.phone ? escapeHtml(u.phone) : "-"}</td>
         <td>${created !== "Invalid Date" ? created : "-"}</td>
@@ -255,7 +334,6 @@ function renderUsers() {
 
   usersCount.textContent = `${list.length} user(s)`;
 
-  // Username cell opens the user modal
   $$("#usersBody [data-open-user]").forEach(b => {
     b.addEventListener("click", () => openUserModal(b.getAttribute("data-open-user")));
   });
@@ -275,6 +353,7 @@ createInterviewerBtn.addEventListener("click", async () => {
     };
     await apiPost("/api/admin/users", payload);
     hide(addModal);
+    await loadStats();
     if (!viewUsers.classList.contains("hidden")) await loadUsers();
     addUUsername.value = addUEmail.value = addUPassword.value = addUPhone.value = "";
   } catch (e) {
@@ -283,7 +362,7 @@ createInterviewerBtn.addEventListener("click", async () => {
   }
 });
 
-/* ======= USER MODAL + per-user recordings ======= */
+/* ======= USER & RECORDING MODALS ======= */
 async function openUserModal(userId) {
   currentUserForModal = await apiGet(`/api/admin/users/${userId}`);
   const recs = await apiGet(`/api/admin/users/${userId}/recordings`);
@@ -296,11 +375,8 @@ async function openUserModal(userId) {
   userRecs.innerHTML = (recs.items || []).map(r => `
     <tr>
       <td>${fmtDate(r.uploaded_at)}</td>
-      <td>
-        <button class="text-blue-700 underline" data-open-rec-file='${encodeURIComponent(r.file_name)}'>
-          ${r.file_name}
-        </button>
-      </td>
+      <td><button class="text-blue-700 underline" data-open-rec-file='${encodeURIComponent(r.file_name)}'>
+        ${r.file_name}</button></td>
       <td>${r.question_set || "-"}</td>
       <td>${r.interviewee_name ? escapeHtml(r.interviewee_name.replace(/"/g, "")) : "-"}</td>
     </tr>
@@ -317,19 +393,20 @@ async function openUserModal(userId) {
 }
 closeUserModal.addEventListener("click", () => hide(userModal));
 
-/* ======= RECORDING DETAIL MODAL ======= */
 closeRecModal.addEventListener("click", () => hide(recModal));
 
 async function openRecordingDetailsByFile(fileName) {
   try {
     const rec = await apiGet(`/api/admin/recordings/by-file/${encodeURIComponent(fileName)}`);
     await renderRecordingDetail(rec);
+    await loadDashboard();
   } catch (e) { renderRecError(e); }
 }
 async function openRecordingDetailsById(id) {
   try {
     const rec = await apiGet(`/api/admin/recordings/${id}`);
     await renderRecordingDetail(rec);
+    await loadDashboard();
   } catch (e) { renderRecError(e); }
 }
 function renderRecError(e) {
@@ -337,7 +414,6 @@ function renderRecError(e) {
   showFlex(recModal);
 }
 async function renderRecordingDetail(rec) {
-  // optional audio: fetch short-lived URL only when needed
   let audioHtml = "";
   try {
     const a = await apiGet(`/api/admin/recordings/${rec._id}/audio`);
@@ -363,32 +439,16 @@ async function renderRecordingDetail(rec) {
       File: <span class="font-mono">${escapeHtml(rec.file_name || "")}</span><br/>
       Uploaded: ${fmtDate(rec.uploaded_at)} • QSet: ${escapeHtml(rec.question_set || "-")} • Sentiment: ${escapeHtml(rec.sentiment || "-")}
     </div>
-
-    <div>
-      <div class="font-semibold mb-1">Summary</div>
-      <div class="rounded border p-3">${escapeHtml(rec.summary || "—")}</div>
-    </div>
-
-    <div>
-      <div class="font-semibold mb-1">Transcript</div>
-      <div class="rounded border p-3 whitespace-pre-wrap">${escapeHtml(rec.transcript || "—")}</div>
-    </div>
-
-    <div>
-      <div class="font-semibold mb-1">Key Points</div>
-      <div class="rounded border p-3">${list(rec.key_points)}</div>
-    </div>
-
-    <div>
-      <div class="font-semibold mb-1">AI Suggestions</div>
-      <div class="rounded border p-3">${list(rec.suggestions)}</div>
-    </div>
-
-    <div>
-      <div class="font-semibold mb-1">Action Items</div>
-      <div class="rounded border p-3">${list(rec.action_items, true)}</div>
-    </div>
-
+    <div><div class="font-semibold mb-1">Summary</div>
+      <div class="rounded border p-3">${escapeHtml(rec.summary || "—")}</div></div>
+    <div><div class="font-semibold mb-1">Transcript</div>
+      <div class="rounded border p-3 whitespace-pre-wrap">${escapeHtml(rec.transcript || "—")}</div></div>
+    <div><div class="font-semibold mb-1">Key Points</div>
+      <div class="rounded border p-3">${list(rec.key_points)}</div></div>
+    <div><div class="font-semibold mb-1">AI Suggestions</div>
+      <div class="rounded border p-3">${list(rec.suggestions)}</div></div>
+    <div><div class="font-semibold mb-1">Action Items</div>
+      <div class="rounded border p-3">${list(rec.action_items, true)}</div></div>
     ${audioHtml}
   `;
   showFlex(recModal);
