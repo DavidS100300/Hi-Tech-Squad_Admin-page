@@ -48,7 +48,8 @@ const addUUsername = $("#addUUsername"), addUEmail = $("#addUEmail"), addUPasswo
 const createInterviewerBtn = $("#createInterviewerBtn");
 
 const userModal = $("#userModal"), closeUserModal = $("#closeUserModal"), userJson = $("#userJson"), userRecs = $("#userRecs");
-const recModal = $("#recModal"), closeRecModal = $("#closeRecModal"), recContent = $("#recContent");
+const recModal = $("#recModal"), closeRecModal = $("#closeRecModal"), recContent = $("#recContent")
+
 
 // Question sets editor DOM
 const qTitle = $("#qTitle");
@@ -93,6 +94,15 @@ loginBtn.addEventListener("click", async () => {
     loginErr.textContent = "Login failed. " + (e.message || "");
   }
 });
+if (refreshRecsBtn) {
+  refreshRecsBtn.addEventListener("click", () => {
+    console.log("Refresh button clicked!");
+    loadDashboard();
+  });
+}
+
+
+
 logoutBtn.addEventListener("click", () => {
   AUTH = { token: null, me: null };
   showFlex(loginScreen); hide(appScreen);
@@ -132,49 +142,73 @@ if (refreshRecsBtn) {
 }
 
 async function loadDashboard() {
-  await loadStats();
-  const data = await apiGet(`/api/admin/recordings?page=${dash.page}&limit=${dash.limit}`);
-  dash.items = data.items || []; dash.total = data.total || 0;
+  console.log("🔄 Loading dashboard…");
 
-  let rows = [...dash.items];
-  const q = (dash.query || "").toLowerCase();
-  if (q) {
-    rows = rows.filter(r =>
-      [r.email, r.file_name, r.question_set, r.interviewee_name].filter(Boolean)
-        .some(s => String(s).toLowerCase().includes(q))
-    );
-  }
-  rows.sort((a, b) => {
-    const da = +new Date(a.uploaded_at || 0), db = +new Date(b.uploaded_at || 0);
-    return dash.sort === "old" ? da - db : db - da;
-  });
+  try {
+    await loadStats();
+    console.log("✅ Stats loaded");
 
-  recBody.innerHTML = rows.map(r => {
-    const label = r.username ? `${escapeHtml(r.username)} (${escapeHtml(r.email || "-")})`
-      : `${escapeHtml(r.email || "-")}`;
-    return `
-      <tr>
-        <td>${label}</td>
-        <td>${fmtDate(r.uploaded_at)}</td>
-        <td>${r.question_set || "-"}</td>
-        <td>${r.interviewee_name ? escapeHtml(r.interviewee_name.replace(/"/g, "")) : "-"}</td>
-        <td>
-          <button class="text-blue-700 underline" data-open-rec='${encodeURIComponent(r.file_name || "")}'>
-            ${r.file_name}
-          </button>
-        </td>
-      </tr>`;
-  }).join("");
+    const url = `/api/admin/recordings?page=${dash.page}&limit=${dash.limit}`;
+    console.log("📡 Fetching:", url);
 
-  pageInfo.textContent = `Page ${dash.page} of ${Math.max(1, Math.ceil(dash.total / dash.limit))}`;
+    const data = await apiGet(url);
+    console.log("📦 API response:", data);
 
-  $$("#recBody [data-open-rec]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const fileName = decodeURIComponent(btn.getAttribute("data-open-rec"));
-      await openRecordingDetailsByFile(fileName);
+    dash.items = data.items || [];
+    dash.total = data.total || 0;
+
+    let rows = [...dash.items];
+    const q = (dash.query || "").toLowerCase();
+    if (q) {
+      rows = rows.filter(r =>
+        [r.email, r.file_name, r.question_set, r.interviewee_name]
+          .filter(Boolean)
+          .some(s => String(s).toLowerCase().includes(q))
+      );
+    }
+
+    rows.sort((a, b) => {
+      const da = +new Date(a.uploaded_at || 0);
+      const db = +new Date(b.uploaded_at || 0);
+      return dash.sort === "old" ? da - db : db - da;
     });
-  });
+
+    recBody.innerHTML = rows.map(r => {
+      const label = r.username
+        ? `${escapeHtml(r.username)} (${escapeHtml(r.email || "-")})`
+        : `${escapeHtml(r.email || "-")}`;
+      return `
+        <tr>
+          <td>${label}</td>
+          <td>${fmtDate(r.uploaded_at)}</td>
+          <td>${r.question_set || "-"}</td>
+          <td>${r.interviewee_name ? escapeHtml(r.interviewee_name.replace(/"/g, "")) : "-"}</td>
+          <td>
+            <button class="text-blue-700 underline" data-open-rec='${encodeURIComponent(r.file_name || "")}'>
+              ${r.file_name}
+            </button>
+          </td>
+        </tr>`;
+    }).join("");
+
+    pageInfo.textContent = `Page ${dash.page} of ${Math.max(1, Math.ceil(dash.total / dash.limit))}`;
+
+    $$("#recBody [data-open-rec]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const fileName = decodeURIComponent(btn.getAttribute("data-open-rec"));
+        console.log("📂 Opening recording:", fileName);
+        await openRecordingDetailsByFile(fileName);
+      });
+    });
+
+    console.log("✅ Dashboard updated with", rows.length, "rows");
+  } catch (err) {
+    console.error("❌ loadDashboard error:", err);
+    recBody.innerHTML = `<tr><td colspan="5" class="text-red-600">Failed to load recordings</td></tr>`;
+    pageInfo.textContent = "Error";
+  }
 }
+
 
 /* ======= QUESTION SETS ======= */
 let editingQset = null;
