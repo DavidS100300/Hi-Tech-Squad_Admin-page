@@ -365,6 +365,36 @@ app.get("/api/admin/recordings/:id/audio", auth, async (req, res) => {
         res.status(500).json({ error: err.message || "Failed to get audio url" });
     }
 });
+// DELETE recording
+app.delete("/api/admin/recordings/:id", auth, async (req, res) => {
+    try {
+        const rec = await Recording.findById(req.params.id).lean();
+        if (!rec) return res.status(404).json({ error: "Recording not found" });
+
+        // Delete from S3 if key available
+        if (rec.s3_key && S3_BUCKET) {
+            try {
+                await s3
+                    .deleteObject({
+                        Bucket: S3_BUCKET,
+                        Key: rec.s3_key,
+                    })
+                    .promise();
+            } catch (err) {
+                console.warn("Failed to delete from S3:", err.message);
+            }
+        }
+
+        // Delete from MongoDB
+        await Recording.deleteOne({ _id: rec._id });
+
+        res.json({ success: true, message: "Recording deleted" });
+    } catch (err) {
+        console.error("Delete error:", err);
+        res.status(500).json({ error: "Failed to delete recording" });
+    }
+});
+
 
 // ---------- Question Sets ----------
 app.post("/api/qsets", auth, async (req, res) => {

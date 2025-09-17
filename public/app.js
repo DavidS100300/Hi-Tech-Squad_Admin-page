@@ -484,8 +484,26 @@ async function renderRecordingDetail(rec) {
     <div><div class="font-semibold mb-1">Action Items</div>
       <div class="rounded border p-3">${list(rec.action_items, true)}</div></div>
     ${audioHtml}
+    <div class="mt-4 text-right">
+      <button id="deleteRecBtn" class="px-3 py-1 rounded bg-red-600 text-white">Delete Recording</button>
+    </div>
   `;
+
   showFlex(recModal);
+
+  // attach delete handler
+  $("#deleteRecBtn").addEventListener("click", async () => {
+    if (!confirm("Are you sure you want to delete this recording?")) return;
+    try {
+      await apiDelete(`/api/admin/recordings/${rec._id}`);
+      alert("✅ Recording deleted");
+      hide(recModal);
+      await loadDashboard(); // refresh list
+    } catch (err) {
+      alert("❌ Failed to delete: " + err.message);
+    }
+  });
+
 }
 
 /* ======= BOOT ======= */
